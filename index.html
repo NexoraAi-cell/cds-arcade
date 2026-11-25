@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111111">
+<title>CDS Arcade | Wear The Sauce</title>
+<style>
+:root{--bg:#0b0b0d;--panel:#17171c;--line:#303039;--text:#f7f7fb;--muted:#a8a8b4;--pink:#ff4da6;--cyan:#47d7ff;--yellow:#ffd84d}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 10% 0%,#292039 0,#0b0b0d 42%);color:var(--text);font:16px system-ui,Arial,sans-serif}
+header{padding:24px 16px 16px;text-align:center;border-bottom:1px solid var(--line);background:#09090bdc}
+.logo{font-weight:1000;letter-spacing:2px;font-size:clamp(28px,8vw,48px);line-height:1.05}.logo span{color:var(--pink)}.tag{color:var(--muted);margin-top:8px}
+main{max-width:980px;margin:auto;padding:16px}.card{background:linear-gradient(145deg,#1c1c24,#111116);border:1px solid var(--line);border-radius:18px;padding:16px;margin:14px 0;box-shadow:0 12px 35px #0005}
+h2{margin:0 0 12px;font-size:20px}.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:120px}
+input,button{font:inherit;border-radius:11px;padding:12px;border:1px solid #454552}input{background:#0c0c11;color:white;min-width:0;width:100%}
+button{background:var(--pink);color:#140812;font-weight:800;border:0;cursor:pointer}button.secondary{background:#30303a;color:white;border:1px solid #555563}button:disabled{opacity:.45}
+.small{font-size:13px;color:var(--muted)}.status{color:var(--cyan);min-height:22px;margin-top:8px}
+.games{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.game{background:#101016;border:1px solid var(--line);padding:14px;border-radius:15px}.game h3{margin:0 0 5px}
+#playArea{min-height:145px;display:grid;place-items:center;text-align:center;border:1px dashed #555568;border-radius:14px;padding:14px;margin-top:12px}
+.big{font-size:34px;font-weight:900}.pill{display:inline-block;padding:5px 10px;border-radius:99px;background:#292936;color:var(--cyan);font-size:12px}
+ol{padding-left:24px}li{padding:5px 0;border-bottom:1px solid #292932}.muted{color:var(--muted)}
+footer{text-align:center;color:var(--muted);padding:24px 12px;font-size:12px}
+@media(max-width:520px){main{padding:10px}.card{padding:13px}}
+</style>
+</head>
+<body>
+<header><div class="logo"><span>CDS</span> ARCADE</div><div class="tag">COLOUR DRIPPIN SAUCE · EST. 2019 · WEAR THE SAUCE</div></header>
+<main>
+<section class="card">
+<h2>Player account</h2>
+<div class="row"><input id="username" placeholder="Username (for new account)" maxlength="24"><input id="email" type="email" placeholder="Email address" autocomplete="email"></div>
+<div class="row" style="margin-top:9px"><input id="password" type="password" placeholder="Password (at least 6 characters)" autocomplete="current-password"><button id="signup">Create account</button><button id="login" class="secondary">Log in</button></div>
+<div class="row" style="margin-top:9px"><button id="logout" class="secondary" disabled>Log out</button><span id="account" class="small" style="align-self:center">Not logged in. You can play without an account.</span></div>
+<div id="authStatus" class="status" role="status"></div>
+</section>
+<section class="card">
+<h2>Choose your game</h2>
+<div class="games">
+<div class="game"><h3>🥫 Sauce Catcher</h3><p class="small">Tap the sauce drops as quickly as you can.</p><button onclick="startCatch()">Play Sauce Catcher</button></div>
+<div class="game"><h3>⚡ Drip Dash</h3><p class="small">Wait for the signal, then tap as fast as possible.</p><button onclick="startDash()">Play Drip Dash</button></div>
+<div class="game"><h3>🎨 Colour Clash</h3><p class="small">Choose the colour named on the screen.</p><button onclick="startColour()">Play Colour Clash</button></div>
+</div>
+<div id="playArea"><div><div class="big">READY?</div><div class="muted">Choose a game to start.</div></div></div>
+<div id="gameStatus" class="status" aria-live="polite"></div>
+</section>
+<section class="card">
+<h2>🏆 Online leaderboard</h2><p class="small">Best submitted scores from registered players.</p><button class="secondary" onclick="loadLeaderboard()">Refresh leaderboard</button><ol id="leaderboard"><li class="muted">Sign in or refresh to load scores.</li></ol>
+</section>
+<section class="card">
+<h2>📚 My recent game history</h2><button class="secondary" onclick="loadHistory()">Refresh my history</button><ol id="history"><li class="muted">Log in to view your saved games.</li></ol>
+</section>
+<section class="card">
+<h2>Connection status</h2><div id="connection" class="small">Connecting to CDS Arcade database…</div>
+<p class="small">Online scores require an account and internet connection. Your browser can still run the games if the database is unavailable.</p>
+</section>
+</main>
+<footer>Colour Drippin Sauce · EST. 2019 · CDS Arcade<br>Play fair. Have fun. Wear The Sauce.</footer>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = "https://onoxebnppwkvzxvrkawu.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_m-GFd_4fjzS8KzQ-yhbPqw_SNwAAvg3";
+const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+let currentUser=null, gameTimer=null, gameActive=false, score=0, gameName="", dashStart=0, dashTimeout=null;
+
+async function init(){
+  try { const {data:{session},error}=await client.auth.getSession(); if(error) throw error;
+    currentUser=session?.user||null; updateAccount();
+    document.getElementById("connection").textContent="Database client loaded. Sign-up/login and table access will be checked when used.";
+    client.auth.onAuthStateChange((_event,session)=>{currentUser=session?.user||null;updateAccount();});
+  } catch(e){document.getElementById("connection").textContent="Connection issue: "+e.message;}
+}
+function updateAccount(){
+ document.getElementById("account").textContent=currentUser?("Signed in: "+(currentUser.user_metadata?.username||currentUser.email)):"Not logged in. You can play without an account.";
+ document.getElementById("logout").disabled=!currentUser;
+}
+const $=id=>document.getElementById(id);
+$("signup").onclick=async()=>{
+ const email=$("email").value.trim(),password=$("password").value,username=$("username").value.trim();
+ if(!email||password.length<6||!username){$("authStatus").textContent="Enter a username, valid email and password of at least 6 characters.";return;}
+ $("authStatus").textContent="Creating account…";
+ const {data,error}=await client.auth.signUp({email,password,options:{data:{username}}});
+ $("authStatus").textContent=error?error.message:(data.session?"Account created and signed in.":"Account created. Check your email to confirm, then log in.");
+ if(data.session){currentUser=data.user;updateAccount();}
+};
+$("login").onclick=async()=>{
+ $("authStatus").textContent="Logging in…";
+ const {data,error}=await client.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});
+ $("authStatus").textContent=error?error.message:"Welcome back!";
+ if(data.user){currentUser=data.user;updateAccount();loadHistory();loadLeaderboard();}
+};
+$("logout").onclick=async()=>{const {error}=await client.auth.signOut();$("authStatus").textContent=error?error.message:"Logged out.";currentUser=null;updateAccount();};
+function stopGame(){gameActive=false;clearInterval(gameTimer);clearTimeout(dashTimeout);}
+async function saveScore(name,value){
+ if(!currentUser){$("gameStatus").textContent="Score: "+value+". Log in to save it to the online leaderboard.";return;}
+ const {error}=await client.from("game_scores").insert({user_id:currentUser.id,game_name:name,score:value});
+ $("gameStatus").textContent=error?("Score played: "+value+". Save failed: "+error.message):("Score "+value+" saved online!");
+ if(!error){loadLeaderboard();loadHistory();}
+}
+function finish(name,value){stopGame();score=value;$("gameStatus").textContent="Game over! Score: "+value;$("playArea").innerHTML='<div><div class="big">'+value+'</div><div class="muted">Your score</div><button onclick="saveScore(\''+name+'\', '+value+')">Save score online</button></div>';}
+function startCatch(){
+ stopGame();gameName="Sauce Catcher";score=0;let left=15;
+ $("gameStatus").textContent="Tap the drop 15 times before time runs out.";
+ const draw=()=>{$("playArea").innerHTML='<div><div class="big">💧</div><button id="drop">CATCH THE SAUCE!</button><p class="small">Time left: '+left+'s · Catches: '+score+'</p></div>'; $("drop").onclick=()=>{if(gameActive){score++;draw();}};};
+ gameActive=true;draw();gameTimer=setInterval(()=>{left--;if(left<=0)finish(gameName,score);else draw();},1000);
+}
+function startDash(){
+ stopGame();gameName="Drip Dash";gameActive=true;
+ $("gameStatus").textContent="Wait for green. Don't tap early!";
+ $("playArea").innerHTML='<button class="secondary" disabled>WAIT…</button>';
+ const delay=1500+Math.random()*3500;
+ dashTimeout=setTimeout(()=>{if(!gameActive)return;dashStart=performance.now();$("playArea").innerHTML='<button id="go" style="background:#52e39a">TAP NOW!</button>';$("go").onclick=()=>{if(!gameActive)return;const ms=Math.round(performance.now()-dashStart);finish(gameName,Math.max(0,1000-ms));$("gameStatus").textContent="Reaction time: "+ms+" ms. Higher score is better.";};},delay);
+}
+function startColour(){
+ stopGame();gameName="Colour Clash";let points=0,round=0;const colours=[["RED","#ff4d5e"],["BLUE","#4da6ff"],["GREEN","#55d98b"],["YELLOW","#ffd84d"]];
+ function next(){
+  if(round>=10){finish(gameName,points);return;}
+  round++;const target=colours[Math.floor(Math.random()*4)];
+  $("playArea").innerHTML='<div><div class="small">ROUND '+round+' / 10</div><div class="big">'+target[0]+'</div><div class="row">'+colours.map(c=>'<button style="background:'+c[1]+'" data-c="'+c[0]+'">'+c[0]+'</button>').join('')+'</div><p class="small">Points: '+points+'</p></div>';
+  document.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{if(!gameActive)return;if(b.dataset.c===target[0])points+=10;gameActive=false;next();});
+ }
+ gameActive=true;next();$("gameStatus").textContent="Get 10 points for each correct answer.";
+}
+async function loadLeaderboard(){
+ $("leaderboard").innerHTML="<li>Loading…</li>";
+ const {data,error}=await client.from("game_scores").select("score,game_name,created_at,profiles(username)").order("score",{ascending:false}).limit(10);
+ if(error){$("leaderboard").innerHTML="<li>Could not load: "+escapeHtml(error.message)+"</li>";return;}
+ $("leaderboard").innerHTML=data.length?data.map((r,i)=>'<li><b>#'+(i+1)+' '+escapeHtml(r.profiles?.username||"Player")+'</b> — '+escapeHtml(r.game_name)+' · '+r.score+' pts</li>').join(""):"<li>No scores yet. Be the first!</li>";
+}
+async function loadHistory(){
+ if(!currentUser){$("history").innerHTML="<li>Log in to see your history.</li>";return;}
+ $("history").innerHTML="<li>Loading…</li>";
+ const {data,error}=await client.from("game_history").select("game_name,score,played_at").eq("user_id",currentUser.id).order("played_at",{ascending:false}).limit(20);
+ if(error){$("history").innerHTML="<li>Could not load: "+escapeHtml(error.message)+"</li>";return;}
+ $("history").innerHTML=data.length?data.map(r=>'<li>'+escapeHtml(r.game_name)+' — '+r.score+' pts <span class="small">('+new Date(r.played_at).toLocaleString()+')</span></li>').join(""):"<li>No games saved yet.</li>";
+}
+function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+init();
+</script>
+</body></html>
